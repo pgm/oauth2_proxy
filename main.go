@@ -74,6 +74,7 @@ func main() {
 	flagSet.String("approval-prompt", "force", "OAuth approval_prompt")
 
 	flagSet.String("signature-key", "", "GAP-Signature request signature key (algorithm:secretkey)")
+	flagSet.String("user-path-whitelist", "", "Path to configuration of users which are allowed to access paths that match specific patterns")
 
 	flagSet.Parse(os.Args[1:])
 
@@ -99,8 +100,15 @@ func main() {
 		log.Printf("%s", err)
 		os.Exit(1)
 	}
+
+	userPathValidator, err := parseUserPathWhitelist(opts.UserPathWhitelistPath)
+	if err != nil {
+		log.Printf("%s", err)
+		os.Exit(1)
+	}
+
 	validator := NewValidator(opts.EmailDomains, opts.AuthenticatedEmailsFile)
-	oauthproxy := NewOAuthProxy(opts, validator)
+	oauthproxy := NewOAuthProxy(opts, validator, userPathValidator)
 
 	if len(opts.EmailDomains) != 0 && opts.AuthenticatedEmailsFile == "" {
 		if len(opts.EmailDomains) > 1 {

@@ -3,9 +3,6 @@ package main
 import (
 	"crypto"
 	"encoding/base64"
-	"github.com/18F/hmacauth"
-	"github.com/bitly/oauth2_proxy/providers"
-	"github.com/bmizerany/assert"
 	"io"
 	"io/ioutil"
 	"log"
@@ -17,6 +14,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/18F/hmacauth"
+	"github.com/bmizerany/assert"
+	"github.com/pgm/oauth2_proxy/providers"
 )
 
 func init() {
@@ -83,7 +84,7 @@ func TestRobotsTxt(t *testing.T) {
 	opts.CookieSecret = "xyzzyplugh"
 	opts.Validate()
 
-	proxy := NewOAuthProxy(opts, func(string) bool { return true })
+	proxy := NewOAuthProxy(opts, func(string) bool { return true }, nil)
 	rw := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/robots.txt", nil)
 	proxy.ServeHTTP(rw, req)
@@ -166,7 +167,7 @@ func TestBasicAuthPassword(t *testing.T) {
 	opts.provider = NewTestProvider(provider_url, email_address)
 	proxy := NewOAuthProxy(opts, func(email string) bool {
 		return email == email_address
-	})
+	}, nil)
 
 	rw := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/oauth2/callback?code=callback_code",
@@ -251,7 +252,7 @@ func NewPassAccessTokenTest(opts PassAccessTokenTestOptions) *PassAccessTokenTes
 	t.opts.provider = NewTestProvider(provider_url, email_address)
 	t.proxy = NewOAuthProxy(t.opts, func(email string) bool {
 		return email == email_address
-	})
+	}, nil)
 	return t
 }
 
@@ -361,7 +362,7 @@ func NewSignInPageTest() *SignInPageTest {
 
 	sip_test.proxy = NewOAuthProxy(sip_test.opts, func(email string) bool {
 		return true
-	})
+	}, nil)
 	sip_test.sign_in_regexp = regexp.MustCompile(signInRedirectPattern)
 
 	return &sip_test
@@ -435,7 +436,7 @@ func NewProcessCookieTest(opts ProcessCookieTestOpts) *ProcessCookieTest {
 
 	pc_test.proxy = NewOAuthProxy(pc_test.opts, func(email string) bool {
 		return pc_test.validate_user
-	})
+	}, nil)
 	pc_test.proxy.provider = &TestProvider{
 		ValidToken: opts.provider_validate_cookie_response,
 	}
@@ -682,7 +683,7 @@ func (st *SignatureTest) MakeRequestWithExpectedKey(method, body, key string) {
 	if err != nil {
 		panic(err)
 	}
-	proxy := NewOAuthProxy(st.opts, func(email string) bool { return true })
+	proxy := NewOAuthProxy(st.opts, func(email string) bool { return true }, nil)
 
 	var bodyBuf io.ReadCloser
 	if body != "" {

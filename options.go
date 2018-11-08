@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/18F/hmacauth"
-	"github.com/bitly/oauth2_proxy/providers"
+	"github.com/pgm/oauth2_proxy/providers"
 )
 
 // Configuration Options that can be set by Command Line Flag, or Config File
@@ -68,7 +68,8 @@ type Options struct {
 
 	RequestLogging bool `flag:"request-logging" cfg:"request_logging"`
 
-	SignatureKey string `flag:"signature-key" cfg:"signature_key" env:"OAUTH2_PROXY_SIGNATURE_KEY"`
+	SignatureKey          string `flag:"signature-key" cfg:"signature_key" env:"OAUTH2_PROXY_SIGNATURE_KEY"`
+	UserPathWhitelistPath string `flag:"user-path-whitelist" cfg:"user_path_whitelist"`
 
 	// internal values that are set after config validation
 	redirectURL   *url.URL
@@ -85,22 +86,22 @@ type SignatureData struct {
 
 func NewOptions() *Options {
 	return &Options{
-		ProxyPrefix:         "/oauth2",
-		HttpAddress:         "127.0.0.1:4180",
-		HttpsAddress:        ":443",
-		DisplayHtpasswdForm: true,
-		CookieName:          "_oauth2_proxy",
-		CookieSecure:        true,
-		CookieHttpOnly:      true,
-		CookieExpire:        time.Duration(168) * time.Hour,
-		CookieRefresh:       time.Duration(0),
-		PassBasicAuth:       true,
-		PassAccessToken:     false,
-		PassHostHeader:      true,
-		SkipProviderButton:  false,
-		ApprovalPrompt:      "force",
-		RequestLogging:      true,
-	}
+		ProxyPrefix:           "/oauth2",
+		HttpAddress:           "127.0.0.1:4180",
+		HttpsAddress:          ":443",
+		DisplayHtpasswdForm:   true,
+		CookieName:            "_oauth2_proxy",
+		CookieSecure:          true,
+		CookieHttpOnly:        true,
+		CookieExpire:          time.Duration(168) * time.Hour,
+		CookieRefresh:         time.Duration(0),
+		PassBasicAuth:         true,
+		PassAccessToken:       false,
+		PassHostHeader:        true,
+		SkipProviderButton:    false,
+		ApprovalPrompt:        "force",
+		RequestLogging:        true,
+		UserPathWhitelistPath: ""}
 }
 
 func parseURL(to_parse string, urltype string, msgs []string) (*url.URL, []string) {

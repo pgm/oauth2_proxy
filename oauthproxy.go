@@ -16,7 +16,7 @@ import (
 
 	"github.com/18F/hmacauth"
 	"github.com/bitly/oauth2_proxy/cookie"
-	"github.com/bitly/oauth2_proxy/providers"
+	"github.com/pgm/oauth2_proxy/providers"
 )
 
 const SignatureHeader = "GAP-Signature"
@@ -43,6 +43,8 @@ type OAuthProxy struct {
 	CookieExpire   time.Duration
 	CookieRefresh  time.Duration
 	Validator      func(string) bool
+	// returns true if user with email should be allowed to access uri
+	PathValidator PathValidator
 
 	RobotsPath        string
 	PingPath          string
@@ -114,7 +116,7 @@ func NewFileServer(path string, filesystemPath string) (proxy http.Handler) {
 	return http.StripPrefix(path, http.FileServer(http.Dir(filesystemPath)))
 }
 
-func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
+func NewOAuthProxy(opts *Options, validator func(string) bool, pathValidator PathValidator) *OAuthProxy {
 	serveMux := http.NewServeMux()
 	var auth hmacauth.HmacAuth
 	if sigData := opts.signatureData; sigData != nil {
@@ -183,6 +185,7 @@ func NewOAuthProxy(opts *Options, validator func(string) bool) *OAuthProxy {
 		CookieExpire:   opts.CookieExpire,
 		CookieRefresh:  opts.CookieRefresh,
 		Validator:      validator,
+		PathValidator:  pathValidator,
 
 		RobotsPath:        "/robots.txt",
 		PingPath:          "/ping",
@@ -516,6 +519,7 @@ func (p *OAuthProxy) AuthenticateOnly(rw http.ResponseWriter, req *http.Request)
 
 func (p *OAuthProxy) Proxy(rw http.ResponseWriter, req *http.Request) {
 	status := p.Authenticate(rw, req)
+	log.Printf("Authenticate status = %d", status)
 	if status == http.StatusInternalServerError {
 		p.ErrorPage(rw, http.StatusInternalServerError,
 			"Internal Error", "Internal Error")
@@ -525,12 +529,18 @@ func (p *OAuthProxy) Proxy(rw http.ResponseWriter, req *http.Request) {
 		} else {
 			p.SignInPage(rw, req, http.StatusForbidden)
 		}
+	} else if status == ShowForbiddenPage {
+		log.Printf("ErrorPage")
+		p.ErrorPage(rw, http.StatusForbidden, "Forbidden", fmt.Sprintf("User is not allowed to access this path"))
 	} else {
 		p.serveMux.ServeHTTP(rw, req)
 	}
 }
 
+const ShowForbiddenPage = 1000001
+
 func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int {
+
 	var saveSession, clearSession, revalidated bool
 	remoteAddr := getRemoteAddr(req)
 
@@ -568,11 +578,16 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 		}
 	}
 
-	if session != nil && session.Email != "" && !p.Validator(session.Email) {
-		log.Printf("%s Permission Denied: removing session %s", remoteAddr, session)
-		session = nil
-		saveSession = false
-		clearSession = true
+	pathWhitelistedUser := false
+	if session != nil {
+		rejectedEmail := session.Email != "" && !p.Validator(session.Email)
+		pathWhitelistedUser = p.PathValidator != nil && p.PathValidator.RequiresValidation(session.User)
+		if rejectedEmail && !pathWhitelistedUser {
+			log.Printf("%s Permission Denied: removing session %s", remoteAddr, session)
+			session = nil
+			saveSession = false
+			clearSession = true
+		}
 	}
 
 	if saveSession && session != nil {
@@ -591,6 +606,15 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 		session, err = p.CheckBasicAuth(req)
 		if err != nil {
 			log.Printf("%s %s", remoteAddr, err)
+		}
+	}
+
+	if session != nil && pathWhitelistedUser {
+		if p.PathValidator.IsValid(session.User, req.RequestURI) {
+			log.Printf("%s only allowed some paths: %s allowed", session.User, req.RequestURI)
+		} else {
+			log.Printf("%s only allowed some paths: %s not allowed", session.User, req.RequestURI)
+			return ShowForbiddenPage
 		}
 	}
 
@@ -614,6 +638,7 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 	} else {
 		rw.Header().Set("GAP-Auth", session.Email)
 	}
+
 	return http.StatusAccepted
 }
 
