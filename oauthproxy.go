@@ -323,7 +323,7 @@ func (p *OAuthProxy) PingPage(rw http.ResponseWriter) {
 }
 
 func (p *OAuthProxy) ErrorPage(rw http.ResponseWriter, code int, title string, message string) {
-	log.Printf("ErrorPage %d %s %s", code, title, message)
+	// log.Printf("ErrorPage %d %s %s", code, title, message)
 	rw.WriteHeader(code)
 	t := struct {
 		Title       string
@@ -519,7 +519,6 @@ func (p *OAuthProxy) AuthenticateOnly(rw http.ResponseWriter, req *http.Request)
 
 func (p *OAuthProxy) Proxy(rw http.ResponseWriter, req *http.Request) {
 	status := p.Authenticate(rw, req)
-	log.Printf("Authenticate status = %d", status)
 	if status == http.StatusInternalServerError {
 		p.ErrorPage(rw, http.StatusInternalServerError,
 			"Internal Error", "Internal Error")
@@ -530,7 +529,6 @@ func (p *OAuthProxy) Proxy(rw http.ResponseWriter, req *http.Request) {
 			p.SignInPage(rw, req, http.StatusForbidden)
 		}
 	} else if status == ShowForbiddenPage {
-		log.Printf("ErrorPage")
 		p.ErrorPage(rw, http.StatusForbidden, "Forbidden", fmt.Sprintf("User is not allowed to access this path"))
 	} else {
 		p.serveMux.ServeHTTP(rw, req)
@@ -611,9 +609,9 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 
 	if session != nil && pathWhitelistedUser {
 		if p.PathValidator.IsValid(session.User, req.RequestURI) {
-			log.Printf("%s only allowed some paths: %s allowed", session.User, req.RequestURI)
+			// log.Printf("%s only allowed some paths: %s allowed", session.User, req.RequestURI)
 		} else {
-			log.Printf("%s only allowed some paths: %s not allowed", session.User, req.RequestURI)
+			log.Printf("user \"%s\" not allowed to access path \"%s\" not allowed", session.User, req.RequestURI)
 			return ShowForbiddenPage
 		}
 	}
