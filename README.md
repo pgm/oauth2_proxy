@@ -1,3 +1,28 @@
+## Changes specific to this fork
+
+This repo forked https://github.com/funkymrrogers/oauth2_proxy which added
+changes to support websocket connections on top of the original
+https://github.com/bitly/oauth2_proxy
+
+In addition, this repo contains support for whitelisting users for specific 
+paths. To enable, add "user_path_whitelist" to config which points to a json
+file of the following format:
+
+```
+{"groups": [
+  {"name": "group name", 
+   "paths": ["/rmsrepurposing"], 
+   "usernames": ["joe", "jk@sample.com"]},
+   ...
+   ]}
+```
+
+The group name can be anything and is not actually used other than as a
+label. Paths is a list of reg-expressions which the path will be matched on.
+Usernames are the list of users for which this whitelist applies. The
+username can be a username specified in htpasswd file, or an authenticated
+email address.
+
 oauth2_proxy
 =================
 
@@ -371,3 +396,4 @@ server {
   }
 }
 ```
+
