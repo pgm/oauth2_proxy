@@ -368,6 +368,7 @@ func (p *OAuthProxy) SignInPage(rw http.ResponseWriter, req *http.Request, code 
 
 func (p *OAuthProxy) ManualSignIn(rw http.ResponseWriter, req *http.Request) (string, bool) {
 	if req.Method != "POST" || p.HtpasswdFile == nil {
+		log.Printf("attemped authenticate via HtpasswdFile but failed because no file configured")
 		return "", false
 	}
 	user := req.FormValue("username")
@@ -492,8 +493,16 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 		redirect = "/"
 	}
 
+	emailOkay := p.Validator(session.Email) && p.provider.ValidateGroup(session.Email)
+
+	if !emailOkay {
+		// we might have gotten an authentication attempt for an account listed as a path whitelisted address. Check that
+		// as well
+		emailOkay = p.PathValidator.RequiresValidation(session.Email)
+	}
+
 	// set cookie, or deny
-	if p.Validator(session.Email) && p.provider.ValidateGroup(session.Email) {
+	if emailOkay {
 		log.Printf("%s authentication complete %s", remoteAddr, session)
 		err := p.SaveSession(rw, req, session)
 		if err != nil {
@@ -537,6 +546,14 @@ func (p *OAuthProxy) Proxy(rw http.ResponseWriter, req *http.Request) {
 
 const ShowForbiddenPage = 1000001
 
+func emailOrUser(session *providers.SessionState) string {
+	if session.Email != "" {
+		return session.Email
+	} else {
+		return session.User
+	}
+}
+
 func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int {
 
 	var saveSession, clearSession, revalidated bool
@@ -544,7 +561,7 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 
 	session, sessionAge, err := p.LoadCookiedSession(req)
 	if err != nil {
-		log.Printf("%s %s", remoteAddr, err)
+		log.Printf("LoadCookiedSession error: %s %s", remoteAddr, err)
 	}
 	if session != nil && sessionAge > p.CookieRefresh && p.CookieRefresh != time.Duration(0) {
 		log.Printf("%s refreshing %s old session cookie for %s (refresh after %s)", remoteAddr, sessionAge, session, p.CookieRefresh)
@@ -579,9 +596,9 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 	pathWhitelistedUser := false
 	if session != nil {
 		rejectedEmail := session.Email != "" && !p.Validator(session.Email)
-		pathWhitelistedUser = p.PathValidator != nil && p.PathValidator.RequiresValidation(session.User)
+		pathWhitelistedUser = p.PathValidator != nil && p.PathValidator.RequiresValidation(emailOrUser(session))
 		if rejectedEmail && !pathWhitelistedUser {
-			log.Printf("%s Permission Denied: removing session %s", remoteAddr, session)
+			log.Printf("%s Permission Denied: removing session %s (user=%s, email=%s)", remoteAddr, session, session.User, session.Email)
 			session = nil
 			saveSession = false
 			clearSession = true
@@ -591,7 +608,7 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 	if saveSession && session != nil {
 		err := p.SaveSession(rw, req, session)
 		if err != nil {
-			log.Printf("%s %s", remoteAddr, err)
+			log.Printf("Could not save session: %s %s", remoteAddr, err)
 			return http.StatusInternalServerError
 		}
 	}
@@ -608,7 +625,7 @@ func (p *OAuthProxy) Authenticate(rw http.ResponseWriter, req *http.Request) int
 	}
 
 	if session != nil && pathWhitelistedUser {
-		if p.PathValidator.IsValid(session.User, req.RequestURI) {
+		if p.PathValidator.IsValid(emailOrUser(session), req.RequestURI) {
 			// log.Printf("%s only allowed some paths: %s allowed", session.User, req.RequestURI)
 		} else {
 			log.Printf("user \"%s\" not allowed to access path \"%s\" not allowed", session.User, req.RequestURI)

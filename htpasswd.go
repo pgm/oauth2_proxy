@@ -45,6 +45,7 @@ func NewHtpasswd(file io.Reader) (*HtpasswdFile, error) {
 func (h *HtpasswdFile) Validate(user string, password string) bool {
 	realPassword, exists := h.Users[user]
 	if !exists {
+		log.Printf("Could not find password entry for %s", user)
 		return false
 	}
 	if realPassword[:5] == "{SHA}" {
