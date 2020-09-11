@@ -37,6 +37,7 @@ type Options struct {
 	TLSKeyFile         string   `flag:"tls-key-file" cfg:"tls_key_file"`
 
 	AuthenticatedEmailsFile  string   `flag:"authenticated-emails-file" cfg:"authenticated_emails_file"`
+	UserPathWhitelistPath    string   `flag:"user-path-whitelist" cfg:"user_path_whitelist"`
 	KeycloakGroup            string   `flag:"keycloak-group" cfg:"keycloak_group"`
 	AzureTenant              string   `flag:"azure-tenant" cfg:"azure_tenant"`
 	BitbucketTeam            string   `flag:"bitbucket-team" cfg:"bitbucket_team"`
@@ -220,6 +221,7 @@ func NewFlagSet() *pflag.FlagSet {
 	flagSet.String("client-secret-file", "", "the file with OAuth Client Secret")
 	flagSet.String("authenticated-emails-file", "", "authenticate against emails via file (one per line)")
 	flagSet.String("htpasswd-file", "", "additionally authenticate against a htpasswd file. Entries must be created with \"htpasswd -s\" for SHA encryption or \"htpasswd -B\" for bcrypt encryption")
+	flagSet.String("user-path-whitelist", "", "Path to configuration of users which are allowed to access paths that match specific patterns")
 	flagSet.Bool("display-htpasswd-form", true, "display username / password login form if an htpasswd file is provided")
 	flagSet.String("custom-templates-dir", "", "path to custom html templates")
 	flagSet.String("banner", "", "custom banner string. Use \"-\" to disable default banner.")

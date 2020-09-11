@@ -42,7 +42,8 @@ const (
 var (
 	// ErrNeedsLogin means the user should be redirected to the login page
 	ErrNeedsLogin = errors.New("redirect to login page")
-
+	// ErrAccessDenied means an authenticated user tried to access a path which they are not authorized to access
+	ErrAccessDenied = errors.New("path is not allowed for this user")
 	// Used to check final redirects are not susceptible to open redirects.
 	// Matches //, /\ and both of these with whitespace in between (eg / / or / \).
 	invalidRedirectRegex = regexp.MustCompile(`[/\\](?:[\s\v]*|\.{1,2})[/\\]`)
@@ -78,6 +79,7 @@ type OAuthProxy struct {
 	ProxyPrefix             string
 	SignInMessage           string
 	basicAuthValidator      basic.Validator
+	PathValidator           PathValidator
 	displayHtpasswdForm     bool
 	serveMux                http.Handler
 	SetXAuthRequest         bool
@@ -111,6 +113,11 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 	sessionStore, err := sessions.NewSessionStore(&opts.Session, &opts.Cookie)
 	if err != nil {
 		return nil, fmt.Errorf("error initialising session store: %v", err)
+	}
+
+	userPathValidator, err := parseUserPathWhitelist(opts.UserPathWhitelistPath, validator)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing UserPathWhiteList: %s", err)
 	}
 
 	templates := loadTemplates(opts.CustomTemplatesDir)
@@ -216,6 +223,7 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 		Footer:                  opts.Footer,
 		SignInMessage:           buildSignInMessage(opts),
 
+		PathValidator:       userPathValidator,
 		basicAuthValidator:  basicAuthValidator,
 		displayHtpasswdForm: basicAuthValidator != nil,
 		sessionChain:        sessionChain,
@@ -844,9 +852,28 @@ func (p *OAuthProxy) SkipAuthProxy(rw http.ResponseWriter, req *http.Request) {
 // them to authenticate
 func (p *OAuthProxy) Proxy(rw http.ResponseWriter, req *http.Request) {
 	session, err := p.getAuthenticatedSession(rw, req)
+	username := "<unknown>"
+
+	if err == nil {
+		// CreatedAt         *time.Time `json:",omitempty" msgpack:"ca,omitempty"`
+		// ExpiresOn         *time.Time `json:",omitempty" msgpack:"eo,omitempty"`
+		// RefreshToken      string     `json:",omitempty" msgpack:"rt,omitempty"`
+		// Email             string     `json:",omitempty" msgpack:"e,omitempty"`
+		// User              string     `json:",omitempty" msgpack:"u,omitempty"`
+		// PreferredUsername string     `json:",omitempty" msgpack:"pu,omitempty"`
+		logger.Errorf("Got session: email=%v user=%v puser=%v", session.Email, session.User, session.PreferredUsername)
+		username = session.Email
+		// we are authenticated, so now check the path is accessible for the current account
+		if p.PathValidator.IsValid(username, req.RequestURI) {
+			err = nil
+		} else {
+			err = ErrAccessDenied
+		}
+	}
+
 	switch err {
 	case nil:
-		// we are authenticated
+		// successfully authenticated and path is also okay
 		p.addHeadersForProxying(rw, req, session)
 		p.serveMux.ServeHTTP(rw, req)
 
@@ -863,6 +890,10 @@ func (p *OAuthProxy) Proxy(rw http.ResponseWriter, req *http.Request) {
 		} else {
 			p.SignInPage(rw, req, http.StatusForbidden)
 		}
+
+	case ErrAccessDenied:
+		p.ErrorPage(rw, http.StatusForbidden, "Forbidden",
+			fmt.Sprintf("User (%s) is not allowed to access this path", username))
 
 	default:
 		// unknown error
@@ -888,7 +919,7 @@ func (p *OAuthProxy) getAuthenticatedSession(rw http.ResponseWriter, req *http.R
 		return nil, ErrNeedsLogin
 	}
 
-	if session != nil && session.Email != "" && !p.Validator(session.Email) {
+	if session != nil && session.Email != "" && !p.Validator(session.Email) && !p.PathValidator.RequiresValidation(session.PreferredUsername) {
 		logger.Printf(session.Email, req, logger.AuthFailure, "Invalid authentication via session: removing session %s", session)
 		// Invalid session, clear it
 		err := p.ClearSessionCookie(rw, req)

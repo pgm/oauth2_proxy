@@ -40,3 +40,9 @@ _testmain.go
 # vi Dockerfile.dev
 # docker build -f Dockerfile.dev .
 Dockerfile.dev
+*~
+oauth2_proxy
+oauth2_proxy-linux-amd64
+oauth2_proxy-macos
+oauth2_prxy.code-workspace
+test-config
