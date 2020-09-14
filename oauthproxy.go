@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -645,6 +646,7 @@ func (p *OAuthProxy) IsTrustedIP(req *http.Request) bool {
 }
 
 func (p *OAuthProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	log.Printf("ServeHTTP: %s", req.URL.Path)
 	if req.URL.Path != p.AuthOnlyPath && strings.HasPrefix(req.URL.Path, p.ProxyPrefix) {
 		prepareNoCache(rw)
 	}
@@ -812,7 +814,7 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// set cookie, or deny
-	if p.Validator(session.Email) && p.provider.ValidateGroup(session.Email) {
+	if (p.Validator(session.Email) && p.provider.ValidateGroup(session.Email)) || p.PathValidator.RequiresValidation(emailOrUser(session)) {
 		logger.PrintAuthf(session.Email, req, logger.AuthSuccess, "Authenticated via OAuth2: %s", session)
 		err := p.SaveSession(rw, req, session)
 		if err != nil {
@@ -825,6 +827,13 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 		logger.PrintAuthf(session.Email, req, logger.AuthFailure, "Invalid authentication via OAuth2: unauthorized")
 		p.ErrorPage(rw, http.StatusForbidden, "Permission Denied", "Invalid Account")
 	}
+}
+
+func emailOrUser(session *sessionsapi.SessionState) string {
+	if session.Email != "" {
+		return session.Email
+	}
+	return session.User
 }
 
 // AuthenticateOnly checks whether the user is currently logged in
@@ -853,6 +862,7 @@ func (p *OAuthProxy) SkipAuthProxy(rw http.ResponseWriter, req *http.Request) {
 func (p *OAuthProxy) Proxy(rw http.ResponseWriter, req *http.Request) {
 	session, err := p.getAuthenticatedSession(rw, req)
 	username := "<unknown>"
+	logger.Errorf("Looking up session yielded %v, err=%v", session, err)
 
 	if err == nil {
 		// CreatedAt         *time.Time `json:",omitempty" msgpack:"ca,omitempty"`
@@ -862,12 +872,12 @@ func (p *OAuthProxy) Proxy(rw http.ResponseWriter, req *http.Request) {
 		// User              string     `json:",omitempty" msgpack:"u,omitempty"`
 		// PreferredUsername string     `json:",omitempty" msgpack:"pu,omitempty"`
 		logger.Errorf("Got session: email=%v user=%v puser=%v", session.Email, session.User, session.PreferredUsername)
-		username = session.Email
+		username = emailOrUser(session)
 		// we are authenticated, so now check the path is accessible for the current account
-		if p.PathValidator.IsValid(username, req.RequestURI) {
-			err = nil
-		} else {
+		if p.PathValidator.RequiresValidation() && !p.PathValidator.IsValid(username, req.RequestURI) {
 			err = ErrAccessDenied
+		} else {
+			err = nil
 		}
 	}
 
@@ -919,7 +929,7 @@ func (p *OAuthProxy) getAuthenticatedSession(rw http.ResponseWriter, req *http.R
 		return nil, ErrNeedsLogin
 	}
 
-	if session != nil && session.Email != "" && !p.Validator(session.Email) && !p.PathValidator.RequiresValidation(session.PreferredUsername) {
+	if session != nil && session.Email != "" && !p.Validator(session.Email) && !p.PathValidator.RequiresValidation(session.Email) {
 		logger.Printf(session.Email, req, logger.AuthFailure, "Invalid authentication via session: removing session %s", session)
 		// Invalid session, clear it
 		err := p.ClearSessionCookie(rw, req)
