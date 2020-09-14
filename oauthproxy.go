@@ -814,7 +814,7 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// set cookie, or deny
-	if (p.Validator(session.Email) && p.provider.ValidateGroup(session.Email)) || p.PathValidator.RequiresValidation(emailOrUser(session)) {
+	if (p.Validator(session.Email) && p.provider.ValidateGroup(session.Email)) || p.PathValidator.RequiresValidation(session.Email) {
 		logger.PrintAuthf(session.Email, req, logger.AuthSuccess, "Authenticated via OAuth2: %s", session)
 		err := p.SaveSession(rw, req, session)
 		if err != nil {
@@ -874,7 +874,7 @@ func (p *OAuthProxy) Proxy(rw http.ResponseWriter, req *http.Request) {
 		logger.Errorf("Got session: email=%v user=%v puser=%v", session.Email, session.User, session.PreferredUsername)
 		username = emailOrUser(session)
 		// we are authenticated, so now check the path is accessible for the current account
-		if p.PathValidator.RequiresValidation() && !p.PathValidator.IsValid(username, req.RequestURI) {
+		if p.PathValidator.RequiresValidation(username) && !p.PathValidator.IsValid(username, req.RequestURI) {
 			err = ErrAccessDenied
 		} else {
 			err = nil
